@@ -1,0 +1,5 @@
+Test,Statistic,p-value,Significant?
+Pearson r,r=0.151,0.2661,False
+t-test (gender),t=-0.313,0.7556,False
+ANOVA (screentime),F=1.256,0.2977,False
+Regression R²,R²=0.518,—,—
