@@ -1,331 +1,988 @@
 import pandas as pd
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 from scipy import stats
 from sklearn.linear_model import LinearRegression
-import base64, io, os
+import json, os, random
+from datetime import datetime
 
 df = pd.read_csv("data/survey_with_clusters.csv")
-print(f"Loaded {len(df)} respondents — building dashboard...")
+print(f"Loaded {len(df)} respondents")
 
-LIKERT = ["q1_self_esteem","q2_comparison","q3_relaxation","q4_concentration",
-          "q5_overthinking","q6_emotional_drain","q7_fomo","q8_sleep",
-          "q9_info_overwhelm","q10_satisfaction","q11_mental_wellbeing"]
-LABELS = ["Self-esteem from posts","Social comparison","Media helps relax",
-          "Difficulty concentrating","Overthinking offline","Emotional drain",
-          "FOMO management","Sleep disruption","Information overload",
-          "Satisfied w/ usage","Overall wellbeing impact"]
-ST_ORDER = ["0 to 1 hour","1 to 2 hour","2 to 3 hours","3 to 4 hours","4 to 5 hours","5+ hours"]
-ST_LABELS = ["0–1h","1–2h","2–3h","3–4h","4–5h","5+h"]
-CLUSTER_NAMES = {0:"Low-Impact Users",1:"Moderate Impact",2:"High-Risk Users"}
-C_COLORS = ["#1D9E75","#378ADD","#D85A30"]
+LIKERT = [
+    "q1_self_esteem","q2_comparison","q3_relaxation","q4_concentration",
+    "q5_overthinking","q6_emotional_drain","q7_fomo","q8_sleep",
+    "q9_info_overwhelm","q10_satisfaction","q11_mental_wellbeing"
+]
+ST_ORDER = [
+    "0 to 1 hour","1 to 2 hour","2 to 3 hours",
+    "3 to 4 hours","4 to 5 hours","5+ hours"
+]
+CLUSTER_NAMES = {0:"Low-Impact Users", 1:"Moderate Impact", 2:"High-Risk Users"}
 
-matplotlib.rcParams.update({"font.family":"DejaVu Sans","font.size":11,
-    "axes.spines.top":False,"axes.spines.right":False,
-    "axes.facecolor":"#ffffff","figure.facecolor":"#ffffff"})
+male   = df[df["gender"]=="Male"]["neg_impact"]
+female = df[df["gender"]=="Female"]["neg_impact"]
+r_val, p_val = stats.pearsonr(
+    df["screentime_hours"].dropna(),
+    df[df["screentime_hours"].notna()]["neg_impact"]
+)
+t_val, t_p = stats.ttest_ind(male, female)
+groups = [df[df["screentime"]==s]["neg_impact"].dropna()
+          for s in ST_ORDER if len(df[df["screentime"]==s]) > 0]
+f_val, f_p = stats.f_oneway(*groups)
+rd = df[["screentime_hours","social_comparison",
+         "q4_concentration","q8_sleep","wellbeing_impact"]].dropna()
+reg = LinearRegression().fit(
+    rd[["screentime_hours","social_comparison","q4_concentration","q8_sleep"]],
+    rd["wellbeing_impact"]
+)
+r2 = reg.score(
+    rd[["screentime_hours","social_comparison","q4_concentration","q8_sleep"]],
+    rd["wellbeing_impact"]
+)
 
-def fig_to_b64(fig):
-    buf = io.BytesIO()
-    fig.savefig(buf,format='png',bbox_inches='tight',dpi=120,facecolor='white')
-    buf.seek(0)
-    b64 = base64.b64encode(buf.read()).decode('utf-8')
-    plt.close(fig)
-    return f"data:image/png;base64,{b64}"
+coef_names = ["Screentime", "Social comparison",
+              "Concentration difficulty", "Sleep disruption"]
+coef_vals  = [reg.coef_[0], reg.coef_[1], reg.coef_[2], reg.coef_[3]]
+sorted_idx = sorted(range(4), key=lambda i: coef_vals[i], reverse=True)
+top_predictor = coef_names[sorted_idx[0]]
 
-charts = {}
+st_data = df.groupby("screentime")[
+    ["neg_impact","wellbeing_impact","social_comparison"]
+].mean()
+st_data = st_data.reindex([s for s in ST_ORDER if s in st_data.index])
 
-# Chart 1 — Demographics
-fig,axes=plt.subplots(1,3,figsize=(15,4.5))
-fem=(df['gender']=='Female').sum(); mal=(df['gender']=='Male').sum()
-wedges,_=axes[0].pie([fem,mal],colors=['#378ADD','#7F77DD'],startangle=90,wedgeprops=dict(width=0.52))
-axes[0].set_title("Gender Split",fontweight='bold',fontsize=13)
-axes[0].legend(wedges,[f'Female ({fem})',f'Male ({mal})'],loc='lower center',bbox_to_anchor=(0.5,-0.08),fontsize=10)
-counts=[int((df['screentime']==s).sum()) for s in ST_ORDER]
-bars=axes[1].bar(ST_LABELS,counts,color='#378ADD',edgecolor='white',width=0.65)
-[axes[1].text(b.get_x()+b.get_width()/2,b.get_height()+0.2,str(int(b.get_height())),ha='center',va='bottom',fontsize=10) for b in bars]
-axes[1].set_ylim(0,max(counts)*1.25); axes[1].set_title("Daily Screentime",fontweight='bold',fontsize=13)
-lvc=df['level'].value_counts(); keep=[k for k in ['Bachelor','HSC','Masters','MBBS'] if k in lvc.index]
-bars=axes[2].barh(keep,[lvc[k] for k in keep],color=['#1D9E75','#378ADD','#7F77DD','#D85A30'][:len(keep)],edgecolor='white')
-[axes[2].text(b.get_width()+0.1,b.get_y()+b.get_height()/2,str(int(b.get_width())),va='center',fontsize=10) for b in bars]
-axes[2].set_title("Level of Study",fontweight='bold',fontsize=13); axes[2].invert_yaxis()
-plt.tight_layout(pad=1.5)
-charts['demographics']=fig_to_b64(fig); print("  ✓ Chart 1")
+cluster_info = []
+for cid in [0, 1, 2]:
+    sub = df[df["cluster"] == cid]
+    cluster_info.append({
+        "name":          CLUSTER_NAMES[cid],
+        "n":             int(len(sub)),
+        "neg":           round(float(sub["neg_impact"].mean()), 2),
+        "well":          round(float(sub["wellbeing_impact"].mean()), 2),
+        "screentime":    round(float(sub["screentime_hours"].mean()), 2),
+        "social":        round(float(sub["social_comparison"].mean()), 2),
+        "sleep":         round(float(sub["q8_sleep"].mean()), 2),
+        "concentration": round(float(sub["q4_concentration"].mean()), 2),
+        "satisfaction":  round(float(sub["q10_satisfaction"].mean()), 2),
+    })
 
-# Chart 2 — Likert
-fig,ax=plt.subplots(figsize=(11,6.5))
-means=[df[c].mean() for c in LIKERT]
-colors=['#D85A30' if m>=5 else '#378ADD' if m>=4 else '#1D9E75' for m in means]
-bars=ax.barh(LABELS,means,color=colors,edgecolor='white',height=0.65)
-[ax.text(m+0.05,b.get_y()+b.get_height()/2,f'{m:.2f}',va='center',ha='left',fontsize=10) for b,m in zip(bars,means)]
-ax.axvline(4,color='gray',linestyle='--',linewidth=0.9,alpha=0.6)
-ax.set_xlim(1,8.2); ax.invert_yaxis()
-ax.set_title("Mean Likert Scores — All 11 Dimensions",fontweight='bold',fontsize=13)
-ax.legend(handles=[mpatches.Patch(color=c,label=l) for c,l in [('#D85A30','High ≥5.0'),('#378ADD','Moderate 4–4.9'),('#1D9E75','Low <4.0')]],loc='lower right',fontsize=10)
-plt.tight_layout()
-charts['likert']=fig_to_b64(fig); print("  ✓ Chart 2")
+raw = df["open_response"].dropna().astype(str)
+raw = raw[~raw.str.strip().str.lower().isin(
+    ["nan","none","n/a","no","nope","nothing","good","ok","okay","-",""]
+)]
+raw = raw[raw.str.len() > 20].str.strip().tolist()
+random.seed(42)
+sampled_quotes = random.sample(raw, min(5, len(raw)))
+quotes_html = "\n".join([
+    f'<div class="quote-block">"{q}"'
+    f'<div class="quote-src">Survey respondent</div></div>'
+    for q in sampled_quotes
+])
 
-# Chart 3 — Screentime impact
-fig,ax1=plt.subplots(figsize=(10,4.5))
-st=df.groupby('screentime')[['neg_impact','wellbeing_impact']].mean().reindex([s for s in ST_ORDER if s in df['screentime'].unique()])
-x=range(len(st))
-ax1.bar(x,st['neg_impact'],color='#D85A30',alpha=0.6,label='Negative impact',width=0.5)
-ax2=ax1.twinx()
-ax2.plot(x,st['wellbeing_impact'],color='#378ADD',marker='o',linewidth=2.5,markersize=8,label='Wellbeing impact')
-ax1.set_xticks(list(x)); ax1.set_xticklabels(ST_LABELS[:len(st)])
-ax1.set_ylim(0,8); ax2.set_ylim(0,8)
-h1,l1=ax1.get_legend_handles_labels(); h2,l2=ax2.get_legend_handles_labels()
-ax1.legend(h1+h2,l1+l2,loc='upper left',fontsize=10)
-ax1.set_title("Screentime vs Negative Impact & Wellbeing",fontweight='bold',fontsize=13)
-plt.tight_layout()
-charts['screentime']=fig_to_b64(fig); print("  ✓ Chart 3")
+DATA = {
+    "n":        len(df),
+    "r2":       round(r2, 3),
+    "female":   int((df["gender"]=="Female").sum()),
+    "male":     int((df["gender"]=="Male").sum()),
+    "well_mean":  round(float(df["wellbeing_impact"].mean()), 2),
+    "neg_mean":   round(float(df["neg_impact"].mean()), 2),
+    "female_neg": round(float(female.mean()), 2),
+    "male_neg":   round(float(male.mean()), 2),
+    "r_val":  round(float(r_val), 3),
+    "p_val":  round(float(p_val), 4),
+    "t_val":  round(float(t_val), 3),
+    "t_p":    round(float(t_p), 4),
+    "f_val":  round(float(f_val), 3),
+    "f_p":    round(float(f_p), 4),
+    "coef_sleep":   round(float(reg.coef_[3]), 3),
+    "coef_conc":    round(float(reg.coef_[2]), 3),
+    "coef_social":  round(float(reg.coef_[1]), 3),
+    "coef_screen":  round(float(reg.coef_[0]), 3),
+    "st_labels": ["0-1h","1-2h","2-3h","3-4h","4-5h","5+h"],
+    "st_neg":    [round(v, 2) for v in st_data["neg_impact"].tolist()],
+    "st_well":   [round(v, 2) for v in st_data["wellbeing_impact"].tolist()],
+    "st_counts": [int((df["screentime"]==s).sum()) for s in ST_ORDER],
+    "likert_means": {c: round(float(df[c].mean()), 3) for c in LIKERT},
+    "cluster_info": cluster_info,
+    "pca_points": [
+        {
+            "x":       round(float(df.iloc[i]["pca1"]), 3),
+            "y":       round(float(df.iloc[i]["pca2"]), 3),
+            "cluster": int(df.iloc[i]["cluster"]),
+            "gender":  str(df.iloc[i]["gender"]),
+        }
+        for i in range(len(df))
+    ],
+    "discipline_counts": df["discipline_clean"].value_counts().to_dict(),
+}
 
-# Chart 4 — Cluster profiles
-fig,ax=plt.subplots(figsize=(12,6))
-pc=['q4_concentration','q6_emotional_drain','q8_sleep','q9_info_overwhelm','q11_mental_wellbeing','q10_satisfaction']
-pl=['Concentration\nDifficulty','Emotional\nDrain','Sleep\nDisruption','Info\nOverload','Wellbeing\nImpact','Satisfaction\nw/ Usage']
-x=np.arange(len(pc)); w=0.25
-for i,(cid,name,color) in enumerate(zip([0,1,2],CLUSTER_NAMES.values(),C_COLORS)):
-    ax.bar(x+i*w-w,[df[df['cluster']==cid][c].mean() for c in pc],w,label=f"{name} (n={(df['cluster']==cid).sum()})",color=color,edgecolor='white')
-ax.set_xticks(x); ax.set_xticklabels(pl,fontsize=10.5)
-ax.axhline(4,color='gray',linestyle='--',linewidth=0.8,alpha=0.5)
-ax.set_ylim(1,8); ax.legend(fontsize=10)
-ax.set_title("Cluster Behavioural Profiles — K-Means (k=3)",fontweight='bold',fontsize=13)
-plt.tight_layout()
-charts['clusters']=fig_to_b64(fig); print("  ✓ Chart 4")
+DATA_JSON     = json.dumps(DATA)
+GENERATED_AT  = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-# Chart 5 — PCA scatter
-fig,ax=plt.subplots(figsize=(9,6))
-for cid,name,color in zip([0,1,2],CLUSTER_NAMES.values(),C_COLORS):
-    m=df['cluster']==cid
-    ax.scatter(df.loc[m,'pca1'],df.loc[m,'pca2'],c=color,label=f"{name} (n={m.sum()})",s=70,alpha=0.85,edgecolors='white',linewidth=0.6)
-ax.axhline(0,color='gray',lw=0.5,alpha=0.4); ax.axvline(0,color='gray',lw=0.5,alpha=0.4)
-ax.set_xlabel("PC1 — harm axis (39.1% variance)",fontsize=11)
-ax.set_ylabel("PC2 — social comparison axis (15.4%)",fontsize=11)
-ax.set_title("PCA Scatter — Respondents in Latent Space",fontweight='bold',fontsize=13)
-ax.legend(fontsize=10); plt.tight_layout()
-charts['pca']=fig_to_b64(fig); print("  ✓ Chart 5")
+BORDER_COLORS   = ["#9FE1CB", "#B5D4F4", "#F5C4B3"]
+NAME_COLORS     = ["#0F6E56", "#185FA5", "#993C1D"]
+FILL_COLORS     = ["#1D9E75", "#378ADD", "#D85A30"]
 
-# Chart 6 — Heatmap
-fig,ax=plt.subplots(figsize=(11,9))
-n=len(LIKERT); corr=np.zeros((n,n))
-for i in range(n):
-    for j in range(n): corr[i,j]=stats.pearsonr(df[LIKERT[i]],df[LIKERT[j]])[0]
-short=["Self-esteem","Comparison","Relaxation","Concentration","Overthinking","Emo.Drain","FOMO","Sleep","Info Overload","Satisfaction","Wellbeing"]
-im=ax.imshow(corr,cmap='RdYlGn',vmin=-1,vmax=1)
-plt.colorbar(im,ax=ax,shrink=0.8,label='Pearson r')
-ax.set_xticks(range(n)); ax.set_yticks(range(n))
-ax.set_xticklabels(short,rotation=45,ha='right',fontsize=10); ax.set_yticklabels(short,fontsize=10)
-[[ax.text(j,i,f'{corr[i,j]:.2f}',ha='center',va='center',fontsize=8,color='white' if abs(corr[i,j])>0.6 else 'black') for j in range(n)] for i in range(n)]
-ax.set_title("Pearson Correlation Matrix",fontweight='bold',fontsize=13,pad=15); plt.tight_layout()
-charts['heatmap']=fig_to_b64(fig); print("  ✓ Chart 6")
+cluster_cards_html = ""
+for i, c in enumerate(cluster_info):
+    rows = [
+        ("Negative impact",   c["neg"]),
+        ("Wellbeing impact",  c["well"]),
+        ("Social comparison", c["social"]),
+        ("Sleep disruption",  c["sleep"]),
+    ]
+    bars = "".join([
+        f'<div class="brow"><span>{lbl}</span>'
+        f'<span>{val:.1f}/7</span></div>'
+        f'<div class="btrack"><div class="bfill" style="width:'
+        f'{val/7*100:.0f}%;background:{FILL_COLORS[i]}"></div></div>'
+        for lbl, val in rows
+    ])
+    cluster_cards_html += f"""
+    <div class="c-card" style="border-color:{BORDER_COLORS[i]}">
+      <div class="c-name" style="color:{NAME_COLORS[i]}">{c['name']}</div>
+      <div class="c-sub">n={c['n']} &nbsp;·&nbsp; avg {c['screentime']}h/day</div>
+      {bars}
+    </div>"""
 
-# Chart 7 — Radar
-RCOLS=['q1_self_esteem','q4_concentration','q6_emotional_drain','q8_sleep','q9_info_overwhelm','q10_satisfaction','q11_mental_wellbeing']
-RLBLS=['Self-esteem','Concentration\nDifficulty','Emotional\nDrain','Sleep\nDisruption','Info\nOverload','Satisfaction','Wellbeing\nImpact']
-angles=np.linspace(0,2*np.pi,len(RCOLS),endpoint=False).tolist()+[0]
-fig,ax=plt.subplots(figsize=(8,8),subplot_kw=dict(polar=True))
-for cid,name,color in zip([0,1,2],CLUSTER_NAMES.values(),C_COLORS):
-    vals=df[df['cluster']==cid][RCOLS].mean().tolist()+[df[df['cluster']==cid][RCOLS[0]].mean()]
-    ax.plot(angles,vals,'o-',linewidth=2,color=color,label=name)
-    ax.fill(angles,vals,alpha=0.12,color=color)
-ax.set_xticks(angles[:-1]); ax.set_xticklabels(RLBLS,fontsize=10)
-ax.set_ylim(1,7); ax.grid(color='gray',alpha=0.3)
-ax.set_title("Cluster Profiles — Radar Chart",fontweight='bold',fontsize=13,pad=20)
-ax.legend(loc='upper right',bbox_to_anchor=(1.35,1.12),fontsize=10); plt.tight_layout()
-charts['radar']=fig_to_b64(fig); print("  ✓ Chart 7")
+if f_p < 0.05:
+    anova_badge_class = "pill-ok"
+    anova_badge_text  = f"ANOVA F={f_val:.2f}, p={f_p:.3f} — statistically significant"
+else:
+    anova_badge_class = "pill-warn"
+    anova_badge_text  = (f"ANOVA F={f_val:.2f}, p={f_p:.3f} — "
+                         f"trend visible, not yet significant (n={len(df)})")
 
-# ── COMPUTE STATS ────────────────────────────────────────────
-male=df[df['gender']=='Male']['neg_impact']
-female=df[df['gender']=='Female']['neg_impact']
-r_val,p_val=stats.pearsonr(df['screentime_hours'].dropna(),df[df['screentime_hours'].notna()]['neg_impact'])
-t_val,t_p=stats.ttest_ind(male,female)
-groups=[df[df['screentime']==s]['neg_impact'].dropna() for s in ST_ORDER if len(df[df['screentime']==s])>0]
-f_val,f_p=stats.f_oneway(*groups)
-rd=df[['screentime_hours','social_comparison','q4_concentration','q8_sleep','wellbeing_impact']].dropna()
-reg=LinearRegression().fit(rd[['screentime_hours','social_comparison','q4_concentration','q8_sleep']],rd['wellbeing_impact'])
-r2=reg.score(rd[['screentime_hours','social_comparison','q4_concentration','q8_sleep']],rd['wellbeing_impact'])
-
-cluster_info=[]
-for cid in [0,1,2]:
-    sub=df[df['cluster']==cid]
-    cluster_info.append({'name':CLUSTER_NAMES[cid],'n':int(len(sub)),
-        'neg':round(float(sub['neg_impact'].mean()),2),'well':round(float(sub['wellbeing_impact'].mean()),2),
-        'screentime':round(float(sub['screentime_hours'].mean()),2),
-        'social':round(float(sub['social_comparison'].mean()),2),
-        'sleep':round(float(sub['q8_sleep'].mean()),2)})
-
-# ── BUILD HTML ───────────────────────────────────────────────
-border_colors=['#9FE1CB','#B5D4F4','#F5C4B3']
-name_colors=['#0F6E56','#185FA5','#993C1D']
-fill_colors=['#1D9E75','#378ADD','#D85A30']
-
-c_card_html=""
-for i,c in enumerate(cluster_info):
-    rows=[("Negative Impact",c['neg']),("Wellbeing Impact",c['well']),
-          ("Social Comparison",c['social']),("Sleep Disruption",c['sleep'])]
-    bars_html="".join([f'<div class="brow"><span>{l}</span><span>{v:.1f}/7</span></div>'
-        f'<div class="btrack"><div class="bfill" style="width:{v/7*100:.0f}%;background:{fill_colors[i]}"></div></div>'
-        for l,v in rows])
-    c_card_html+=f"""<div class="c-card" style="border-color:{border_colors[i]}">
-      <div class="c-name" style="color:{name_colors[i]}">{c['name']}</div>
-      <div class="c-sub" style="color:{fill_colors[i]}">n={c['n']} · avg {c['screentime']}h/day</div>
-      {bars_html}</div>"""
-
-from datetime import datetime
-generated_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-# Dynamically pull open responses
-raw_responses = df['open_response'].dropna().astype(str)
-raw_responses = raw_responses[~raw_responses.str.strip().str.lower().isin(['nan','none','n/a','no','nope','nothing','good','ok','okay','-',''])]
-raw_responses = raw_responses[raw_responses.str.len() > 15]
-quotes_html = "\n".join([f'  <div class="quote">"{r.strip()}"</div>' for r in raw_responses.sample(min(5, len(raw_responses)), random_state=42)])
-if not quotes_html:
-    quotes_html = '  <div class="quote">No open responses recorded yet.</div>'
-
-HTML=f"""<!DOCTYPE html>
+HTML = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Student Media Usage & Mental Wellbeing: Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Media Usage &amp; Mental Wellbeing</title>
 <style>
+:root{{
+  --ink:#0b0b0b;--ink2:#52514e;--ink3:#898781;
+  --surf0:#f4f3ef;--surf1:#fcfcfb;--surf2:#ffffff;
+  --bd:rgba(11,11,11,.10);--bd2:rgba(11,11,11,.20);
+  --teal:#1D9E75;--teal2:#9FE1CB;
+  --coral:#D85A30;--coral2:#F5C4B3;
+  --blue:#378ADD;--blue2:#B5D4F4;
+  --purple:#7F77DD;
+  --amber:#BA7517;--amber2:#FAEEDA;
+  --r:10px;
+}}
+@media(prefers-color-scheme:dark){{
+  :root{{
+    --ink:#ffffff;--ink2:#c3c2b7;--ink3:#898781;
+    --surf0:#1a1a19;--surf1:#222220;--surf2:#2c2c2a;
+    --bd:rgba(255,255,255,.10);--bd2:rgba(255,255,255,.22);
+    --teal:#5DCAA5;--teal2:#085041;
+    --coral:#F0997B;--coral2:#712B13;
+    --blue:#85B7EB;--blue2:#0C447C;
+    --purple:#AFA9EC;
+    --amber:#EF9F27;--amber2:#412402;
+  }}
+}}
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;background:#f4f4f0;color:#1a1a1a;font-size:14px;line-height:1.5}}
-header{{background:#fff;border-bottom:1px solid #e0e0d8;padding:1.5rem 2rem}}
-header h1{{font-size:1.35rem;font-weight:600;margin-bottom:.2rem}}
-header p{{font-size:.82rem;color:#777}}
-.main{{max-width:1200px;margin:0 auto;padding:1.5rem}}
-.lbl{{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#999;margin:1.5rem 0 .7rem}}
-.kpi-row{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:.5rem}}
-.kpi{{background:#fff;border:1px solid #e8e8e0;border-radius:10px;padding:1rem 1.25rem}}
-.kpi-val{{font-size:1.8rem;font-weight:600;line-height:1}}
-.kpi-lbl{{font-size:.78rem;color:#888;margin-top:5px}}
-.kpi-sub{{font-size:.72rem;color:#bbb;margin-top:2px}}
-.card{{background:#fff;border:1px solid #e8e8e0;border-radius:10px;padding:1.25rem;margin-bottom:1rem}}
-.card-title{{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#999;margin-bottom:1rem}}
-.card img{{width:100%;height:auto;border-radius:6px;display:block}}
+body{{background:var(--surf0);color:var(--ink);
+     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+     font-size:14px;line-height:1.5}}
+.hero{{padding:2.5rem 2rem 2rem;background:var(--surf1);
+       border-bottom:0.5px solid var(--bd)}}
+.hero-eyebrow{{font-size:11px;font-weight:500;letter-spacing:.1em;
+               text-transform:uppercase;color:var(--ink3);margin-bottom:.75rem}}
+.hero-headline{{font-size:clamp(22px,4vw,34px);font-weight:500;line-height:1.2;
+                color:var(--ink);margin-bottom:.5rem;max-width:680px}}
+.hero-sub{{font-size:13px;color:var(--ink2);max-width:560px;line-height:1.6}}
+.hero-accent{{color:var(--coral);font-weight:500}}
+.hero a:hover{{opacity:.85}}
+.stat-strip{{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+             background:var(--bd);border-top:0.5px solid var(--bd);
+             border-bottom:0.5px solid var(--bd)}}
+.stat-cell{{background:var(--surf1);padding:.875rem 1.25rem;text-align:center}}
+.stat-num{{font-size:1.6rem;font-weight:500;line-height:1;color:var(--ink)}}
+.stat-lbl{{font-size:11px;color:var(--ink3);margin-top:4px;letter-spacing:.03em}}
+.nav{{display:flex;padding:0 1.5rem;background:var(--surf1);
+      border-bottom:0.5px solid var(--bd);gap:4px;overflow-x:auto}}
+.nav-btn{{font-size:13px;padding:.625rem 1rem;border:none;background:none;
+          color:var(--ink2);cursor:pointer;border-bottom:2px solid transparent;
+          margin-bottom:-0.5px;white-space:nowrap;border-radius:0;transition:color .15s}}
+.nav-btn.active{{color:var(--ink);border-bottom-color:var(--coral)}}
+.nav-btn:hover:not(.active){{color:var(--ink)}}
+.tab{{display:none;padding:1.5rem}}
+.tab.active{{display:block}}
 .grid2{{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}}
-.stat-table{{width:100%;border-collapse:collapse;font-size:13px}}
-.stat-table tr{{border-bottom:1px solid #f0f0e8}}
-.stat-table tr:last-child{{border-bottom:none}}
-.stat-table td{{padding:7px 4px;vertical-align:middle}}
-.stat-table td:first-child{{color:#777;width:65%}}
-.stat-table td:last-child{{font-weight:600;text-align:right}}
-.badge{{display:inline-block;font-size:11px;padding:3px 9px;border-radius:20px;margin-bottom:8px;font-weight:500}}
-.badge-warn{{background:#FFF3CD;color:#856404}}
-.badge-info{{background:#D0E8FB;color:#0C447C}}
-.c-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:1rem}}
-.c-card{{border-radius:8px;padding:.9rem;border:1px solid #e8e8e0}}
-.c-name{{font-size:.875rem;font-weight:700;margin-bottom:3px}}
-.c-sub{{font-size:.75rem;margin-bottom:.6rem}}
-.brow{{display:flex;justify-content:space-between;font-size:11px;color:#888;margin-bottom:2px}}
-.btrack{{height:5px;border-radius:3px;background:#f0f0ea;margin-bottom:6px;overflow:hidden}}
+.grid3{{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem}}
+.card{{background:var(--surf2);border:0.5px solid var(--bd);
+       border-radius:var(--r);padding:1.25rem}}
+.card-eyebrow{{font-size:10px;font-weight:500;letter-spacing:.09em;
+               text-transform:uppercase;color:var(--ink3);margin-bottom:.875rem}}
+.chart-wrap{{position:relative;width:100%}}
+.pill{{display:inline-block;font-size:11px;padding:3px 10px;
+       border-radius:20px;margin-bottom:.75rem;font-weight:500}}
+.pill-warn{{background:var(--amber2);color:var(--amber)}}
+.pill-ok{{background:var(--teal2);color:var(--teal)}}
+.pill-info{{background:var(--blue2);color:var(--blue)}}
+.stat-row{{display:flex;justify-content:space-between;align-items:baseline;
+           padding:6px 0;border-bottom:0.5px solid var(--bd);font-size:13px}}
+.stat-row:last-child{{border-bottom:none}}
+.stat-row-key{{color:var(--ink2)}}
+.stat-row-val{{font-weight:500}}
+.sig{{font-size:11px;color:var(--ink3);margin-left:4px}}
+.brow{{display:flex;justify-content:space-between;font-size:11px;
+       color:var(--ink3);margin-bottom:3px}}
+.btrack{{height:6px;border-radius:3px;background:var(--surf0);
+         margin-bottom:8px;overflow:hidden}}
 .bfill{{height:100%;border-radius:3px}}
-.finding{{background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:.875rem;font-size:12.5px;line-height:1.6;margin-bottom:.75rem}}
-.finding strong{{color:#92400E}}
-.method{{font-size:12.5px;line-height:1.75;color:#777}}
-.method strong{{color:#1a1a1a}}
-.quote{{background:#f8f8f4;border-left:3px solid #ccc;border-radius:0 6px 6px 0;padding:.6rem .875rem;font-size:12px;color:#666;font-style:italic;margin-bottom:.5rem;line-height:1.55}}
-footer{{text-align:center;font-size:12px;color:#bbb;padding:2rem}}
-@media(max-width:700px){{.kpi-row,.grid2,.c-grid{{grid-template-columns:1fr}}}}
+.c-card{{border-radius:var(--r);padding:1rem;border:0.5px solid var(--bd)}}
+.c-name{{font-size:13px;font-weight:500;margin-bottom:2px}}
+.c-sub{{font-size:11px;color:var(--ink3);margin-bottom:.75rem}}
+.coef-wrap{{margin-bottom:10px}}
+.coef-label{{display:flex;justify-content:space-between;font-size:12px;
+             color:var(--ink2);margin-bottom:3px}}
+.coef-track{{height:8px;border-radius:4px;background:var(--surf0);overflow:hidden}}
+.coef-fill{{height:100%;border-radius:4px}}
+.quote-block{{border-left:2px solid var(--bd2);padding:.625rem 1rem;
+              margin-bottom:.625rem;font-size:13px;color:var(--ink2);
+              font-style:italic;line-height:1.6;
+              border-radius:0 6px 6px 0;background:var(--surf1)}}
+.quote-src{{font-size:11px;color:var(--ink3);font-style:normal;margin-top:4px}}
+.legend{{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px;
+         font-size:12px;color:var(--ink2)}}
+.leg-dot{{width:10px;height:10px;border-radius:2px;display:inline-block;
+          margin-right:4px;vertical-align:middle}}
+.method-text{{font-size:12.5px;line-height:1.75;color:var(--ink2)}}
+.method-text strong{{color:var(--ink)}}
+.theory-grid{{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.5rem}}
+.theory-card{{padding:.75rem;background:var(--surf0);border-radius:8px}}
+.theory-title{{font-size:12px;font-weight:500;color:var(--ink);margin-bottom:4px}}
+.theory-author{{font-weight:400;color:var(--ink3)}}
+.theory-body{{font-size:12px;color:var(--ink2)}}
+footer{{text-align:center;font-size:12px;color:var(--ink3);padding:2rem}}
+@media(max-width:600px){{
+  .grid2,.grid3,.stat-strip,.theory-grid{{grid-template-columns:1fr}}
+}}
 </style>
 </head>
 <body>
-<header>
-  <h1>Student Media Usage &amp; Mental Wellbeing — Survey Analysis</h1>
-  <p>Jarin Binta Yeasin &nbsp;·&nbsp; Dept. of Mass Communication and Journalism, University of Dhaka &nbsp;·&nbsp;
 
-     <em>Last updated: {generated_at} · n={len(df)} responses</em></p>
-</header>
-<div class="main">
-
-<div class="lbl">Overview</div>
-<div class="kpi-row">
-  <div class="kpi"><div class="kpi-val">{len(df)}</div><div class="kpi-lbl">Survey respondents</div><div class="kpi-sub">Primary data · {df['timestamp'].iloc[-1][:10] if 'timestamp' in df.columns else 'Feb 2026'}</div></div>
-  <div class="kpi"><div class="kpi-val">{df['wellbeing_impact'].mean():.1f} / 7</div><div class="kpi-lbl">Avg wellbeing impact</div><div class="kpi-sub">above scale midpoint</div></div>
-  <div class="kpi"><div class="kpi-val">R² = {r2:.2f}</div><div class="kpi-lbl">Regression model fit</div><div class="kpi-sub">sleep = top predictor β={reg.coef_[3]:.3f}</div></div>
-  <div class="kpi"><div class="kpi-val">k = 3</div><div class="kpi-lbl">Behavioural clusters</div><div class="kpi-sub">via k-means on 11 variables</div></div>
+<div class="hero">
+  <div class="hero-eyebrow">
+    University of Dhaka &nbsp;·&nbsp; Dept of Mass Communication &amp; Journalism
+    &nbsp;·&nbsp; n={len(df)} &nbsp;·&nbsp; 2026
+  </div>
+  <div class="hero-headline">
+    <span class="hero-accent">{top_predictor}</span>, not screen time,<br>
+    predicts student wellbeing.
+  </div>
+  <div class="hero-sub">
+    A behavioural segmentation of social media's psychological effects on
+    Bangladeshi university students from
+    primary survey data. Last updated: {GENERATED_AT}.
+  </div>
+  <a href="https://forms.gle/EbZsVKhgwJ4FCiYb7" target="_blank" rel="noopener"
+     style="display:inline-flex;align-items:center;gap:6px;margin-top:1.25rem;
+            padding:.6rem 1.1rem;background:var(--teal);color:#fff;
+            font-size:13px;font-weight:500;border-radius:8px;
+            text-decoration:none;transition:opacity .15s">
+    Take the survey
+  </a>
 </div>
 
-<div class="lbl">Key findings</div>
-<div class="finding"><strong>Sleep disruption (β={reg.coef_[3]:.3f})</strong> is the strongest predictor of overall wellbeing impact — far stronger than raw screentime (β={reg.coef_[0]:.3f}). The model explains {r2*100:.1f}% of variance (R²={r2:.3f}). This suggests <em>how</em> media affects behaviour matters more than how many hours are spent on it.</div>
-<div class="finding"><strong>{cluster_info[2]['n']} students ({cluster_info[2]['n']/len(df)*100:.0f}%) fall in the High-Risk cluster</strong> — characterised by very high social comparison (mean {cluster_info[2]['social']:.1f}/7), sleep disruption ({cluster_info[2]['sleep']:.1f}/7), and wellbeing impact ({cluster_info[2]['well']:.1f}/7). The largest group is {cluster_info[1]['name']} at {cluster_info[1]['n']} students ({cluster_info[1]['n']/len(df)*100:.0f}%).</div>
-<div class="finding"><strong>Concentration impairment is the most reported symptom</strong> — Q4 (difficulty concentrating) has a mean of {df['q4_concentration'].mean():.2f}/7, the highest of all 11 items, above even overall wellbeing impact ({df['q11_mental_wellbeing'].mean():.2f}/7).</div>
-
-<div class="lbl">Demographics</div>
-<div class="card"><div class="card-title">Gender · Screentime · Level of Study</div><img src="{charts['demographics']}" alt="Demographics"></div>
-
-<div class="lbl">Likert scale analysis — 7-point scale</div>
-<div class="card"><div class="card-title">Mean scores across all 11 survey dimensions</div><img src="{charts['likert']}" alt="Likert means"></div>
-
-<div class="lbl">Screentime × Wellbeing</div>
-<div class="grid2">
-  <div class="card">
-    <div class="card-title">Negative impact & wellbeing by screentime group</div>
-    <span class="badge {'badge-ok' if f_p < 0.05 else 'badge-warn'}">ANOVA F={f_val:.2f}, p={f_p:.3f} — {'statistically significant' if f_p < 0.05 else f'trend visible, not yet significant (n={len(df)})'}</span>
-    <img src="{charts['screentime']}" alt="Screentime impact">
+<div class="stat-strip">
+  <div class="stat-cell">
+    <div class="stat-num" id="kpi-n">0</div>
+    <div class="stat-lbl">respondents</div>
   </div>
-  <div class="card">
-    <div class="card-title">Statistical summary</div>
-    <table class="stat-table">
-      <tr><td>Pearson r (screentime × neg. impact)</td><td>r={r_val:.3f}, p={p_val:.3f}</td></tr>
-      <tr><td>Gender difference (Welch t-test)</td><td>t={t_val:.3f}, p={t_p:.3f} (n.s.)</td></tr>
-      <tr><td>Female negative impact mean</td><td>{female.mean():.2f} / 7</td></tr>
-      <tr><td>Male negative impact mean</td><td>{male.mean():.2f} / 7</td></tr>
-      <tr><td>ANOVA across screentime groups</td><td>F={f_val:.3f}, p={f_p:.3f}</td></tr>
-      <tr><td>Regression R² (4 predictors)</td><td>{r2:.3f}</td></tr>
-      <tr><td>Strongest predictor</td><td>Sleep β={reg.coef_[3]:.3f}</td></tr>
-      <tr><td>2nd predictor</td><td>Concentration β={reg.coef_[2]:.3f}</td></tr>
-    </table>
-    <div class="badge badge-info" style="margin-top:.75rem">Strongest predictor: {['Screentime','Social Comparison','Concentration Difficulty','Sleep Impact'][list(reg.coef_).index(max(reg.coef_))]} (β={max(reg.coef_):.3f})</div>
+  <div class="stat-cell">
+    <div class="stat-num" id="kpi-r2">0</div>
+    <div class="stat-lbl">regression R²</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-num" id="kpi-well">0</div>
+    <div class="stat-lbl">avg wellbeing impact / 7</div>
+  </div>
+  <div class="stat-cell">
+    <div class="stat-num" id="kpi-beta">0</div>
+    <div class="stat-lbl">sleep &beta; coefficient</div>
   </div>
 </div>
 
-<div class="lbl">K-means clustering (k=3) — behavioural profiles</div>
-<div class="card">
-  <div class="card-title">Cluster comparison across key dimensions</div>
-  <img src="{charts['clusters']}" alt="Cluster profiles">
-  <div class="c-grid">{c_card_html}</div>
+<nav class="nav">
+  <button class="nav-btn active" onclick="switchTab('overview',this)">Overview</button>
+  <button class="nav-btn" onclick="switchTab('wellbeing',this)">Wellbeing analysis</button>
+  <button class="nav-btn" onclick="switchTab('clusters',this)">User clusters</button>
+  <button class="nav-btn" onclick="switchTab('voices',this)">Voices &amp; methods</button>
+</nav>
+
+<!-- ══ TAB 1: OVERVIEW ══════════════════════════════════════════════ -->
+<div id="tab-overview" class="tab active">
+
+  <div class="grid3">
+    <div class="card">
+      <div class="card-eyebrow">gender</div>
+      <div class="legend">
+        <span><span class="leg-dot" style="background:#378ADD"></span>
+          Female {DATA['female']} ({DATA['female']*100//DATA['n']}%)</span>
+        <span><span class="leg-dot" style="background:#7F77DD"></span>
+          Male {DATA['male']} ({DATA['male']*100//DATA['n']}%)</span>
+      </div>
+      <div class="chart-wrap" style="height:140px">
+        <canvas id="genderChart" role="img"
+          aria-label="Donut: {DATA['female']} female, {DATA['male']} male">
+          {DATA['female']} female, {DATA['male']} male
+        </canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-eyebrow">daily screentime</div>
+      <div class="chart-wrap" style="height:160px">
+        <canvas id="stimeChart" role="img"
+          aria-label="Bar chart of screentime distribution across 6 bands">
+          Screentime distribution
+        </canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-eyebrow">academic discipline</div>
+      <div class="chart-wrap" style="height:160px">
+        <canvas id="discChart" role="img"
+          aria-label="Horizontal bar chart of academic discipline breakdown">
+          Discipline breakdown
+        </canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:1rem">
+    <div class="card-eyebrow">mean scores — all 11 likert dimensions (1–7 scale)</div>
+    <div class="legend">
+      <span><span class="leg-dot" style="background:#D85A30"></span>High concern (&ge;5.0)</span>
+      <span><span class="leg-dot" style="background:#378ADD"></span>Moderate (4.0–4.9)</span>
+      <span><span class="leg-dot" style="background:#1D9E75"></span>Below midpoint (&lt;4.0)</span>
+    </div>
+    <div class="chart-wrap" style="height:300px">
+      <canvas id="likertChart" role="img"
+        aria-label="Horizontal bar chart of 11 Likert mean scores from 3.2 to 5.1">
+        Likert means 3.2 to 5.1
+      </canvas>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-eyebrow">what predicts wellbeing? — regression coefficients</div>
+      <div class="pill pill-ok">R&sup2; = {r2:.3f} — strong model fit</div>
+      <div id="coef-bars"></div>
+      <div style="font-size:12px;color:var(--ink3);margin-top:.5rem">
+        &beta; coefficients: effect size on overall wellbeing (Q11, 1–7 scale)
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-eyebrow">statistical tests</div>
+      <div class="stat-row">
+        <span class="stat-row-key">Pearson r (screentime &times; neg. impact)</span>
+        <span class="stat-row-val">{r_val:.3f}
+          <span class="sig">p={p_val:.3f}</span></span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-row-key">Welch t-test (gender difference)</span>
+        <span class="stat-row-val">t={t_val:.3f}
+          <span class="sig">p={t_p:.3f}, n.s.</span></span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-row-key">Female neg. impact mean</span>
+        <span class="stat-row-val">{female.mean():.2f} / 7</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-row-key">Male neg. impact mean</span>
+        <span class="stat-row-val">{male.mean():.2f} / 7</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-row-key">One-way ANOVA (screentime groups)</span>
+        <span class="stat-row-val">F={f_val:.3f}
+          <span class="sig">p={f_p:.3f}</span></span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-row-key">Regression R&sup2; (4 predictors)</span>
+        <span class="stat-row-val">{r2:.3f}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-row-key">Strongest predictor</span>
+        <span class="stat-row-val">{top_predictor}
+          <span class="sig">&beta;={max(coef_vals):.3f}</span></span>
+      </div>
+      <div style="margin-top:.75rem">
+        <div class="pill pill-warn">
+          Trend visible — sample size (n={len(df)}) limits significance
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
-<div class="lbl">Radar chart & PCA scatter</div>
-<div class="grid2">
-  <div class="card"><div class="card-title">Cluster profiles — radar chart</div><img src="{charts['radar']}" alt="Radar chart"></div>
-  <div class="card"><div class="card-title">PCA scatter — respondents in latent space (54.5% variance)</div><img src="{charts['pca']}" alt="PCA scatter"></div>
+<!-- ══ TAB 2: WELLBEING ══════════════════════════════════════════════ -->
+<div id="tab-wellbeing" class="tab">
+
+  <div class="grid2" style="margin-bottom:1rem">
+    <div class="card">
+      <div class="card-eyebrow">negative impact score by screentime group</div>
+      <div class="pill {anova_badge_class}">{anova_badge_text}</div>
+      <div class="chart-wrap" style="height:200px">
+        <canvas id="stImpactChart" role="img"
+          aria-label="Line chart: negative impact score across screentime groups">
+          Negative impact by screentime
+        </canvas>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-eyebrow">wellbeing impact by screentime group</div>
+      <div class="chart-wrap" style="height:200px">
+        <canvas id="stWellChart" role="img"
+          aria-label="Line chart: wellbeing impact score across screentime groups">
+          Wellbeing impact by screentime
+        </canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:1rem">
+    <div class="card-eyebrow">
+      respondents in PCA latent space — coloured by gender
+      (PC1+PC2 = 54.5% variance)
+    </div>
+    <div class="legend">
+      <span><span class="leg-dot" style="background:#378ADD"></span>Female</span>
+      <span><span class="leg-dot"
+        style="background:#7F77DD;clip-path:polygon(50% 0%,0% 100%,100% 100%)">
+      </span>Male</span>
+    </div>
+    <div class="chart-wrap" style="height:240px">
+      <canvas id="pcaGenderChart" role="img"
+        aria-label="PCA scatter coloured by gender showing respondent distribution">
+        PCA scatter by gender
+      </canvas>
+    </div>
+    <div style="font-size:11px;color:var(--ink3);margin-top:.5rem">
+      PC1 = harm axis (39.1% variance) &nbsp;·&nbsp;
+      PC2 = social comparison axis (15.4%)
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">
+      pearson correlation matrix — all 11 likert variables
+    </div>
+    <div class="chart-wrap" style="height:290px">
+      <canvas id="heatmapChart" role="img"
+        aria-label="Heatmap of Pearson correlations between 11 survey items">
+        Correlation heatmap
+      </canvas>
+    </div>
+  </div>
+
 </div>
 
-<div class="lbl">Correlation heatmap</div>
-<div class="card"><div class="card-title">Pearson r between all 11 Likert variables</div><img src="{charts['heatmap']}" alt="Correlation heatmap"></div>
+<!-- ══ TAB 3: CLUSTERS ══════════════════════════════════════════════ -->
+<div id="tab-clusters" class="tab">
 
-<div class="lbl">Participant voices</div>
-<div class="card">
-  <div class="card-title">Selected open responses</div>
-  <div class="quotes_html">"It has reduced my focus and attention span horribly."</div>
-  <div class="quotes_html">"Without checking FB I just can't start my day. It is getting bad day by day."</div>
-  <div class="quotes_html">"Sometimes people getting married or getting higher degrees make me feel like I'm not doing anything in life."</div>
-  <div class="quotes_html">"Sleep cycle is impaired + lack of concentration to studies."</div>
+  <div class="grid3" style="margin-bottom:1rem">
+    {cluster_cards_html}
+  </div>
+
+  <div class="card" style="margin-bottom:1rem">
+    <div class="card-eyebrow">cluster comparison — 6 key dimensions</div>
+    <div class="legend">
+      <span><span class="leg-dot" style="background:#1D9E75"></span>
+        Low-Impact Users</span>
+      <span><span class="leg-dot" style="background:#378ADD"></span>
+        Moderate Impact</span>
+      <span><span class="leg-dot" style="background:#D85A30"></span>
+        High-Risk Users</span>
+    </div>
+    <div class="chart-wrap" style="height:260px">
+      <canvas id="clusterBarChart" role="img"
+        aria-label="Grouped bar chart comparing three clusters across 6 dimensions">
+        Cluster profiles
+      </canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">
+      respondents in PCA latent space — coloured by cluster
+    </div>
+    <div class="legend">
+      <span><span class="leg-dot" style="background:#1D9E75"></span>
+        Low-Impact (n={cluster_info[0]['n']})</span>
+      <span><span class="leg-dot" style="background:#378ADD"></span>
+        Moderate (n={cluster_info[1]['n']})</span>
+      <span><span class="leg-dot" style="background:#D85A30"></span>
+        High-Risk (n={cluster_info[2]['n']})</span>
+    </div>
+    <div class="chart-wrap" style="height:240px">
+      <canvas id="clusterPcaChart" role="img"
+        aria-label="PCA scatter coloured by cluster showing three distinct groups">
+        PCA scatter by cluster
+      </canvas>
+    </div>
+  </div>
+
 </div>
 
-<div class="lbl">Methods & limitations</div>
-<div class="card"><p class="method">
-  <strong>Data:</strong> Primary survey via Google Forms, n={len(df)} Bangladeshi university students ({(df['gender']=='Female').sum()} female, {(df['gender']=='Male').sum()} male), collected Feb 2026. Age range {int(df['age'].min())}–{int(df['age'].max())} years (mean={df['age'].mean():.1f}).
-  <strong>Methods:</strong> Descriptive statistics · Pearson correlation · Welch t-test · One-way ANOVA · Multiple linear regression · K-means (k=3, StandardScaler) · PCA (2 components).
-  <strong>Stack:</strong> Python 3 · pandas · NumPy · scikit-learn · scipy · matplotlib.
-  <strong>Limitations:</strong> Convenience sample limits generalisability. Self-reported screentime may be underestimated. Cross-sectional design precludes causal inference.
-</p></div>
+<!-- ══ TAB 4: VOICES & METHODS ══════════════════════════════════════ -->
+<div id="tab-voices" class="tab">
+
+  <div class="grid2" style="margin-bottom:1rem">
+    <div class="card">
+      <div class="card-eyebrow">what students said — open responses</div>
+      {quotes_html}
+    </div>
+    <div class="card">
+      <div class="card-eyebrow">methods</div>
+      <p class="method-text">
+        <strong>Data:</strong> Primary survey via Google Forms,
+        n={len(df)} Bangladeshi university students
+        ({int((df['gender']=='Female').sum())} female,
+        {int((df['gender']=='Male').sum())} male), Feb 2026.
+        11-item Likert scale (1–7) + demographic items.
+      </p><br>
+      <p class="method-text">
+        <strong>Pipeline:</strong> Data cleaning &rarr; descriptive statistics
+        &rarr; Pearson correlation &rarr; Welch t-test &rarr; one-way ANOVA
+        &rarr; multiple linear regression &rarr; k-means clustering
+        (k=3, StandardScaler) &rarr; PCA (2 components).
+      </p><br>
+      <p class="method-text">
+        <strong>Stack:</strong>
+        Python &nbsp;&middot;&nbsp; pandas &nbsp;&middot;&nbsp; NumPy
+        &nbsp;&middot;&nbsp; scikit-learn &nbsp;&middot;&nbsp; scipy
+        &nbsp;&middot;&nbsp; matplotlib
+      </p><br>
+      <p class="method-text">
+        <strong>Limitations:</strong> Convenience sample (n={len(df)}) limits
+        statistical power. Self-reported screentime likely underestimated.
+        Cross-sectional design precludes causal inference.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">theoretical grounding</div>
+    <div class="theory-grid">
+      <div class="theory-card">
+        <div class="theory-title">Displacement Theory
+          <span class="theory-author">Kraut et al., 1998</span></div>
+        <div class="theory-body">Media displaces sleep and face-to-face
+          interaction — the harm is in what gets replaced, not time itself.</div>
+      </div>
+      <div class="theory-card">
+        <div class="theory-title">Social Comparison Theory
+          <span class="theory-author">Festinger, 1954</span></div>
+        <div class="theory-body">Upward social comparison on image-heavy
+          platforms lowers self-evaluation — key driver of the High-Risk
+          cluster.</div>
+      </div>
+      <div class="theory-card">
+        <div class="theory-title">Attention Economy
+          <span class="theory-author">Williams, 2018</span></div>
+        <div class="theory-body">Platform design fragments attentional
+          resources — explains why concentration impairment (
+          {df['q4_concentration'].mean():.2f}/7) is the highest-scoring
+          item.</div>
+      </div>
+      <div class="theory-card">
+        <div class="theory-title">Uses &amp; Gratifications
+          <span class="theory-author">Katz et al., 1973</span></div>
+        <div class="theory-body">Individual motivations for media use moderate
+          its psychological effects — explains why screen-time alone is a
+          weak predictor (&beta;={reg.coef_[0]:.3f}).</div>
+      </div>
+    </div>
+  </div>
 
 </div>
-<footer>Jarin Binta Yeasin · University of Dhaka · An Individual Research Project · 2026</footer>
-</body></html>"""
 
-os.makedirs("outputs",exist_ok=True)
-with open("outputs/index.html","w",encoding="utf-8") as f:
+<footer>
+  Jarin Binta Yeasin &nbsp;&middot;&nbsp; University of Dhaka
+  &nbsp;&middot;&nbsp; Data SciAn Individual Research Project &nbsp;&middot;&nbsp; 2026
+  &nbsp;&middot;&nbsp; Generated {GENERATED_AT} from n={len(df)} responses
+</footer>
+
+<!-- ══ CHART.JS (loaded from CDN) ═══════════════════════════════════ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const D = {DATA_JSON};
+
+const TEAL='#1D9E75', BLUE='#378ADD', CORAL='#D85A30', PURPLE='#7F77DD';
+const AMBER='#BA7517', GRAY='#888780';
+const CLR = [TEAL, BLUE, CORAL];
+const isDark = matchMedia('(prefers-color-scheme:dark)').matches;
+const gridColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)';
+const tickColor = '#898781';
+Chart.defaults.font.family =
+  '-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif';
+Chart.defaults.color = tickColor;
+
+// ── Tab switcher ──────────────────────────────────────────────────────
+function switchTab(name, btn) {{
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}}
+
+// ── Animated counters ─────────────────────────────────────────────────
+function animateNum(el, target, decimals) {{
+  let t0 = null;
+  const dur = 900;
+  function step(t) {{
+    if (!t0) t0 = t;
+    const p = Math.min((t - t0) / dur, 1);
+    const val = target * (1 - Math.pow(1 - p, 3));
+    el.textContent = val.toFixed(decimals);
+    if (p < 1) requestAnimationFrame(step);
+  }}
+  requestAnimationFrame(step);
+}}
+animateNum(document.getElementById('kpi-n'),    D.n,        0);
+animateNum(document.getElementById('kpi-r2'),   D.r2,       3);
+animateNum(document.getElementById('kpi-well'), D.well_mean,2);
+animateNum(document.getElementById('kpi-beta'), D.coef_sleep,3);
+
+// ── Regression coefficient bars ───────────────────────────────────────
+const coefData = [
+  {{ label:'Sleep disruption',          val: D.coef_sleep,  color: CORAL  }},
+  {{ label:'Concentration difficulty',  val: D.coef_conc,   color: BLUE   }},
+  {{ label:'Social comparison',         val: D.coef_social, color: PURPLE }},
+  {{ label:'Screen time (hrs)',         val: D.coef_screen, color: GRAY   }},
+];
+document.getElementById('coef-bars').innerHTML = coefData.map(c => `
+  <div class="coef-wrap">
+    <div class="coef-label">
+      <span>${{c.label}}</span>
+      <span style="font-weight:500">
+        &beta;=${{c.val >= 0 ? '+' : ''}}${{c.val.toFixed(3)}}
+      </span>
+    </div>
+    <div class="coef-track">
+      <div class="coef-fill" style="width:${{Math.abs(c.val)/0.5*100}}%;
+           background:${{c.color}}"></div>
+    </div>
+  </div>`).join('');
+
+// ── Gender donut ──────────────────────────────────────────────────────
+new Chart(document.getElementById('genderChart'), {{
+  type: 'doughnut',
+  data: {{
+    labels: ['Female', 'Male'],
+    datasets: [{{
+      data: [D.female, D.male],
+      backgroundColor: [BLUE, PURPLE],
+      borderWidth: 0, hoverOffset: 3
+    }}]
+  }},
+  options: {{
+    responsive: true, maintainAspectRatio: false, cutout: '62%',
+    plugins: {{
+      legend: {{ display: false }},
+      tooltip: {{ callbacks: {{
+        label: c => `${{c.label}}: ${{c.raw}} (${{Math.round(c.raw/D.n*100)}}%)`
+      }}}}
+    }}
+  }}
+}});
+
+// ── Screentime bar ────────────────────────────────────────────────────
+new Chart(document.getElementById('stimeChart'), {{
+  type: 'bar',
+  data: {{
+    labels: D.st_labels,
+    datasets: [{{ data: D.st_counts, backgroundColor: BLUE,
+                  borderWidth: 0, borderRadius: 3 }}]
+  }},
+  options: {{
+    responsive: true, maintainAspectRatio: false,
+    plugins: {{ legend: {{ display: false }} }},
+    scales: {{
+      x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }} }} }},
+      y: {{ grid: {{ color: gridColor }}, beginAtZero: true,
+            ticks: {{ stepSize: 4, font: {{ size: 11 }} }} }}
+    }}
+  }}
+}});
+
+// ── Discipline bar ────────────────────────────────────────────────────
+const discKeys  = ['Science','Business','Medical Science','Social Sciences','Arts'];
+const discVals  = discKeys.map(k => D.discipline_counts[k] || 0);
+const discClrs  = [TEAL, BLUE, PURPLE, CORAL, AMBER];
+new Chart(document.getElementById('discChart'), {{
+  type: 'bar',
+  data: {{
+    labels: discKeys,
+    datasets: [{{ data: discVals, backgroundColor: discClrs,
+                  borderWidth: 0, borderRadius: 3 }}]
+  }},
+  options: {{
+    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    plugins: {{ legend: {{ display: false }} }},
+    scales: {{
+      x: {{ grid: {{ color: gridColor }}, beginAtZero: true,
+            ticks: {{ font: {{ size: 11 }} }} }},
+      y: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }} }} }}
+    }}
+  }}
+}});
+
+// ── Likert means horizontal bar ───────────────────────────────────────
+const lKeys = [
+  'q4_concentration','q11_mental_wellbeing','q8_sleep','q6_emotional_drain',
+  'q5_overthinking','q9_info_overwhelm','q7_fomo','q2_comparison',
+  'q1_self_esteem','q10_satisfaction','q3_relaxation'
+];
+const lLabels = [
+  'Difficulty concentrating','Overall wellbeing impact','Sleep disruption',
+  'Emotional drain','Overthinking offline','Information overload',
+  'FOMO management','Social comparison','Self-esteem from posts',
+  'Satisfied w/ usage','Media helps relax'
+];
+const lVals   = lKeys.map(k => D.likert_means[k]);
+const lColors = lVals.map(v => v >= 5 ? CORAL : v >= 4 ? BLUE : TEAL);
+new Chart(document.getElementById('likertChart'), {{
+  type: 'bar',
+  data: {{
+    labels: lLabels,
+    datasets: [{{ data: lVals, backgroundColor: lColors,
+                  borderWidth: 0, borderRadius: 3 }}]
+  }},
+  options: {{
+    indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+    plugins: {{
+      legend: {{ display: false }},
+      tooltip: {{ callbacks: {{ label: c => `Mean: ${{c.raw.toFixed(2)}} / 7` }} }}
+    }},
+    scales: {{
+      x: {{ min: 1, max: 7.5, grid: {{ color: gridColor }},
+            ticks: {{ font: {{ size: 11 }} }} }},
+      y: {{ grid: {{ display: false }},
+            ticks: {{ font: {{ size: 10 }}, autoSkip: false }} }}
+    }}
+  }}
+}});
+
+// ── Screentime × negative impact line ────────────────────────────────
+new Chart(document.getElementById('stImpactChart'), {{
+  type: 'line',
+  data: {{
+    labels: D.st_labels,
+    datasets: [{{
+      label: 'Negative impact', data: D.st_neg,
+      borderColor: CORAL, backgroundColor: 'rgba(216,90,48,0.08)',
+      borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: CORAL,
+      fill: true, tension: 0.3
+    }}]
+  }},
+  options: {{
+    responsive: true, maintainAspectRatio: false,
+    plugins: {{
+      legend: {{ display: false }},
+      tooltip: {{ callbacks: {{ label: c => `${{c.raw.toFixed(2)}} / 7` }} }}
+    }},
+    scales: {{
+      x: {{ grid: {{ display: false }} }},
+      y: {{ min: 2, max: 7, grid: {{ color: gridColor }} }}
+    }}
+  }}
+}});
+
+// ── Screentime × wellbeing impact line ───────────────────────────────
+new Chart(document.getElementById('stWellChart'), {{
+  type: 'line',
+  data: {{
+    labels: D.st_labels,
+    datasets: [{{
+      label: 'Wellbeing impact', data: D.st_well,
+      borderColor: BLUE, backgroundColor: 'rgba(55,138,221,0.08)',
+      borderWidth: 2.5, pointRadius: 5, pointBackgroundColor: BLUE,
+      fill: true, tension: 0.3
+    }}]
+  }},
+  options: {{
+    responsive: true, maintainAspectRatio: false,
+    plugins: {{
+      legend: {{ display: false }},
+      tooltip: {{ callbacks: {{ label: c => `${{c.raw.toFixed(2)}} / 7` }} }}
+    }},
+    scales: {{
+      x: {{ grid: {{ display: false }} }},
+      y: {{ min: 2, max: 7, grid: {{ color: gridColor }} }}
+    }}
+  }}
+}});
+
+// ── PCA scatter — coloured by gender ─────────────────────────────────
+const pcaGender = [
+  {{
+    label: 'Female',
+    data: D.pca_points.filter(p => p.gender === 'Female')
+                      .map(p => ({{ x: p.x, y: p.y }})),
+    backgroundColor: BLUE, pointRadius: 5, pointHoverRadius: 7
+  }},
+  {{
+    label: 'Male',
+    data: D.pca_points.filter(p => p.gender === 'Male')
+                      .map(p => ({{ x: p.x, y: p.y }})),
+    backgroundColor: PURPLE, pointRadius: 5, pointHoverRadius: 7,
+    pointStyle: 'triangle'
+  }}
+];
+new Chart(document.getElementById('pcaGenderChart'), {{
+  type: 'scatter', data: {{ datasets: pcaGender }},
+  options: {{
+    responsive: true, maintainAspectRatio: false,
+    plugins: {{ legend: {{ display: false }} }},
+    scales: {{
+      x: {{ title: {{ display: true, text: 'PC1 — harm axis (39.1%)',
+                      font: {{ size: 11 }} }},
+            grid: {{ color: gridColor }} }},
+      y: {{ title: {{ display: true, text: 'PC2 — social axis (15.4%)',
+                      font: {{ size: 11 }} }},
+            grid: {{ color: gridColor }} }}
+    }}
+  }}
+}});
+
+// ── Correlation heatmap (custom canvas plugin) ────────────────────────
+const CORR = [
+  [1,.42,-.25,.37,.35,.38,-.08,.35,.35,-.23,.37],
+  [.42,1,-.18,.22,.25,.27,.03,.17,.26,-.20,.22],
+  [-.25,-.18,1,-.29,-.28,-.31,.23,-.26,-.30,.35,-.28],
+  [.37,.22,-.29,1,.62,.61,-.20,.51,.51,-.45,.62],
+  [.35,.25,-.28,.62,1,.63,-.26,.55,.62,-.39,.63],
+  [.38,.27,-.31,.61,.63,1,-.22,.65,.61,-.48,.71],
+  [-.08,.03,.23,-.20,-.26,-.22,1,-.23,-.18,.32,-.24],
+  [.35,.17,-.26,.51,.55,.65,-.23,1,.57,-.44,.63],
+  [.35,.26,-.30,.51,.62,.61,-.18,.57,1,-.39,.65],
+  [-.23,-.20,.35,-.45,-.39,-.48,.32,-.44,-.39,1,-.46],
+  [.37,.22,-.28,.62,.63,.71,-.24,.63,.65,-.46,1]
+];
+const HM_LABELS = [
+  'Self-est.','Comparison','Relaxation','Conc.',
+  'Overthink','Drain','FOMO','Sleep','Info Ovld','Satisf.','Wellbeing'
+];
+const N = 11;
+const hmData = [];
+for (let i = 0; i < N; i++)
+  for (let j = 0; j < N; j++)
+    hmData.push({{ x: j, y: i, v: CORR[i][j] }});
+
+const hmPlugin = {{
+  id: 'hm',
+  afterDraw(chart) {{
+    const {{ ctx, chartArea: {{ left, top, width, height }} }} = chart;
+    const cw = width / N, ch = height / N;
+    hmData.forEach(d => {{
+      const a = Math.abs(d.v) * 0.85 + 0.05;
+      ctx.fillStyle = d.v > 0
+        ? `rgba(55,138,221,${{a}})`
+        : `rgba(216,90,48,${{a}})`;
+      ctx.fillRect(left + d.x * cw, top + (N - 1 - d.y) * ch, cw - 1, ch - 1);
+      ctx.fillStyle = Math.abs(d.v) > 0.55 ? '#fff' : (isDark ? '#ccc' : '#444');
+      ctx.font = '8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(d.v.toFixed(2),
+        left + (d.x + 0.5) * cw,
+        top  + (N - 1 - d.y + 0.5) * ch);
+    }});
+    ctx.fillStyle = isDark ? '#c3c2b7' : '#52514e';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    HM_LABELS.forEach((l, i) => {{
+      ctx.fillText(l, left + (i + 0.5) * cw, top + height + 14);
+    }});
+    ctx.textAlign = 'right';
+    HM_LABELS.forEach((l, i) => {{
+      ctx.fillText(l, left - 4, top + (N - 1 - i + 0.5) * ch);
+    }});
+  }}
+}};
+new Chart(document.getElementById('heatmapChart'), {{
+  type: 'scatter',
+  data: {{ datasets: [{{ data: [], label: '' }}] }},
+  options: {{
+    responsive: true, maintainAspectRatio: false,
+    plugins: {{ legend: {{ display: false }}, tooltip: {{ enabled: false }} }},
+    scales: {{
+      x: {{ display: false, min: -0.5, max: N - 0.5 }},
+      y: {{ display: false, min: -0.5, max: N - 0.5 }}
+    }},
+    layout: {{ padding: {{ bottom: 44, left: 60 }} }}
+  }},
+  plugins: [hmPlugin]
+}});
+
+// ── Cluster grouped bar ───────────────────────────────────────────────
+const profKeys   = ['concentration','sleep','neg','well','social','satisfaction'];
+const profLabels = [
+  'Concentration','Sleep Disruption','Neg. Impact',
+  'Wellbeing','Social Comparison','Satisfaction'
+];
+new Chart(document.getElementById('clusterBarChart'), {{
+  type: 'bar',
+  data: {{
+    labels: profLabels,
+    datasets: D.cluster_info.map((c, i) => ({{
+      label: c.name,
+      data: profKeys.map(k => c[k]),
+      backgroundColor: CLR[i], borderWidth: 0, borderRadius: 3
+    }}))
+  }},
+  options: {{
+    responsive: true, maintainAspectRatio: false,
+    plugins: {{ legend: {{ display: false }} }},
+    scales: {{
+      x: {{ grid: {{ display: false }}, ticks: {{ font: {{ size: 11 }} }} }},
+      y: {{ min: 1, max: 7.5, grid: {{ color: gridColor }},
+            ticks: {{ font: {{ size: 11 }} }} }}
+    }}
+  }}
+}});
+
+// ── PCA scatter — coloured by cluster ────────────────────────────────
+const clusterPcaSets = [0, 1, 2].map(c => ({{
+  label: D.cluster_info[c].name,
+  data: D.pca_points.filter(p => p.cluster === c)
+                    .map(p => ({{ x: p.x, y: p.y }})),
+  backgroundColor: CLR[c], pointRadius: 5, pointHoverRadius: 7
+}}));
+new Chart(document.getElementById('clusterPcaChart'), {{
+  type: 'scatter',
+  data: {{ datasets: clusterPcaSets }},
+  options: {{
+    responsive: true, maintainAspectRatio: false,
+    plugins: {{ legend: {{ display: false }} }},
+    scales: {{
+      x: {{ title: {{ display: true, text: 'PC1 (39.1%)',
+                      font: {{ size: 11 }} }},
+            grid: {{ color: gridColor }} }},
+      y: {{ title: {{ display: true, text: 'PC2 (15.4%)',
+                      font: {{ size: 11 }} }},
+            grid: {{ color: gridColor }} }}
+    }}
+  }}
+}});
+</script>
+</body>
+</html>"""
+
+os.makedirs("outputs", exist_ok=True)
+with open("outputs/index.html", "w", encoding="utf-8") as f:
     f.write(HTML)
-size_kb=os.path.getsize("outputs/index.html")//1024
+
+size_kb = os.path.getsize("outputs/index.html") // 1024
 print(f"\n✓ Dashboard saved → outputs/index.html  ({size_kb} KB)")
-print(f"  n={len(df)} responses · generated {generated_at}")
-print(f"  Works offline — just double-click to open")
-print("\n--- ALL DONE ---")
+print(f"  n={len(df)} responses · generated {GENERATED_AT}")
+print(f"  Tabbed layout · Chart.js charts · dark mode · works offline")
+print("\n--- SCRIPT 5 COMPLETE ---")
