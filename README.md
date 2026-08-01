@@ -7,17 +7,20 @@
 [![pandas](https://img.shields.io/badge/pandas-2.x-150458?logo=pandas)](https://pandas.pydata.org)
 [![scikit-learn](https://img.shields.io/badge/scikit--learn-1.x-F7931E?logo=scikit-learn&logoColor=white)](https://scikit-learn.org)
 [![scipy](https://img.shields.io/badge/scipy-1.x-8CAAE6)](https://scipy.org)
-[![matplotlib](https://img.shields.io/badge/matplotlib-3.x-11557c)](https://matplotlib.org)
+[![Chart.js](https://img.shields.io/badge/Chart.js-4.x-FF6384?logo=chartdotjs&logoColor=white)](https://chartjs.org)
 
 > **🔗 [View Live Dashboard](https://jarinyeasin.github.io/media-usage-wellbeing-project/)**
+> **📝 [Take the Survey](https://forms.gle/d42bvrNhkNxVAySn8)** — help grow this dataset
 
 ---
 
 ## Abstract
 
-This study presents a mixed-methods computational analysis of a primary survey (n=56) administered to Bangladeshi students across disciplines in February 2026. Using an 11-item 7-point Likert instrument, I measured dimensions including social comparison, emotional drain, sleep disruption, concentration difficulty, and overall perceived impact on mental wellbeing.
+This study presents a mixed-methods computational analysis of a primary survey (started with n=56)administered to Bangladeshi students across disciplines, first collected in February 2026 and updated on a rolling basis. Using an 11-item 7-point Likert instrument, I measured dimensions including social comparison, emotional drain, sleep disruption, concentration difficulty, and overall perceived impact on mental wellbeing.
 
 Applied 4 statistical tests — Pearson correlation, Welch's independent-samples t-test, one-way ANOVA, and multiple linear regression, alongside two unsupervised machine learning techniques: k-means clustering (k=3) and Principal Component Analysis (PCA). The regression model (R²=0.518) identified **sleep disruption** as the dominant predictor of wellbeing impact (β=0.449), significantly outweighing raw screentime (β=−0.045). Clustering revealed 3 behavioural profiles — Low-Impact Users (32%), Moderate Impact (43%), and High-Risk Users (25%) — with the High-Risk segment distinguished by markedly elevated social comparison scores (mean=5.9/7). These findings carry implications for digital literacy education and student mental health policy in resource-constrained university settings.
+
+The project is built as a **live, self-updating research pipeline**: new responses submitted through the linked Google Form are pulled automatically on each pipeline run, and every statistic, chart, and finding on the dashboard recomputes from the current dataset — no manual editing required.
 
 ---
 
@@ -27,11 +30,12 @@ Applied 4 statistical tests — Pearson correlation, Welch's independent-samples
 - [Research Questions](#research-questions)
 - [Dataset](#dataset)
 - [Methodology](#methodology)
+- [Live Dashboard](#live-dashboard)
 - [Results](#results)
 - [Key Findings](#key-findings)
 - [Project Structure](#project-structure)
 - [Reproducing This Study](#reproducing-this-study)
-- [Visualisations](#visualisations)
+- [Keeping the Dataset Live](#keeping-the-dataset-live)
 - [Limitations](#limitations)
 - [Academic Context](#academic-context)
 - [Author](#author)
@@ -42,7 +46,7 @@ Applied 4 statistical tests — Pearson correlation, Welch's independent-samples
 
 University students navigating academic pressure, identity crisis, and economic uncertainty simultaneously represent a particularly vulnerable demographic for social media's psychological effects. Most existing research on social media and mental health originates from Western populations, limiting the generalisability of findings to South Asian contexts.
 
-This project addresses that gap through a small data-driven attempt, combining primary survey design with a full computational analysis pipeline from raw data cleaning through unsupervised behavioural profiling. It is also a demonstration of applied data science on a real-world social science problem, built entirely with open-source Python tools.
+This project addresses that gap through a small data-driven attempt, combining primary survey design with a full computational analysis pipeline from raw data cleaning through unsupervised behavioural profiling. It is also a demonstration of applied data science on a real-world social science problem, built entirely with open-source Python tools — and designed to keep collecting and re-analysing data over time rather than being a single static snapshot.
 
 ---
 
@@ -59,12 +63,12 @@ This project addresses that gap through a small data-driven attempt, combining p
 
 | Attribute | Details |
 |---|---|
-| **Collection method** | Primary survey via Google Forms |
-| **Population** | Young Adult students living in Dhaka city |
-| **Sample size** | n = 56 |
-| **Collection period** | February 10–13, 2026 |
+| **Collection method** | Primary survey via Google Forms, linked to a live Google Sheet |
+| **Population** | Young adult students living in Dhaka city |
+| **Sample size** | n = 56 at time of writing — growing on a rolling basis |
+| **Collection period** | Ongoing since February 10, 2026 |
 | **Instrument** | 11-item Likert scale (1–7) + demographic items |
-| **Gender breakdown** | Female: 34 (61%), Male: 22 (39%) |
+| **Gender breakdown** | Female: 34 (61%), Male: 22 (39%) — as of last snapshot |
 | **Disciplines** | Science, Business, Medical Science, Social Sciences, Arts |
 | **Study levels** | Bachelor, HSC, Masters, MBBS |
 
@@ -94,15 +98,17 @@ This project addresses that gap through a small data-driven attempt, combining p
 
 ## Methodology
 
-The analysis pipeline consists of 5 sequential stages, each implemented in a dedicated Python script.
+The analysis pipeline consists of 5 sequential stages, each implemented in a dedicated Python script, plus a single orchestrator script that runs all 5 in order.
 
 ### 1. Data Cleaning & Preprocessing (`01_data_cleaning.py`)
 
-- Parsed heterogeneous age entries including Bengali numeral variants (e.g. ১৮ → 18) and free-text formats
-- Standardised academic discipline categories (MBBS / Medicine / Medical Science → Medical Science)
-- Mapped ordinal screentime bands to numeric midpoint values (e.g. "2 to 3 hours" → 2.5h)
-- Validated all Likert items for numeric type and range
-- Derived three composite scores for use in downstream analysis
+- Fetches the latest responses directly from a published Google Sheets CSV endpoint (or falls back to a local Excel file if offline)
+- Saves a timestamped backup of each fetch to `data/`
+- Parses heterogeneous age entries including Bengali numeral variants (e.g. ১৮ → 18) and free-text formats
+- Standardises academic discipline categories (MBBS / Medicine / Medical Science → Medical Science)
+- Maps ordinal screentime bands to numeric midpoint values (e.g. "2 to 3 hours" → 2.5h)
+- Validates all Likert items for numeric type and range
+- Derives three composite scores for use in downstream analysis
 
 ### 2. Statistical Analysis (`02_statistical_analysis.py`)
 
@@ -127,17 +133,41 @@ The analysis pipeline consists of 5 sequential stages, each implemented in a ded
 - PC1 interpreted as a "harm axis" (high loadings on concentration, sleep, drain)
 - PC2 interpreted as a "social comparison axis"
 
-### 4. Visualisation (`04_visualisations.py`)
+### 4. Static Visualisation (`04_visualisations.py`)
 
-Eight publication-quality PNG figures generated via matplotlib: demographics, Likert means, screentime–impact relationship, gender comparison, Pearson correlation matrix, elbow/silhouette diagnostics, radar chart of cluster profiles, and PCA scatter.
+Eight publication-quality PNG figures generated via matplotlib: demographics, Likert means, screentime–impact relationship, gender comparison, Pearson correlation matrix, elbow/silhouette diagnostics, radar chart of cluster profiles, and PCA scatter. Intended for reports, slides, and print — not the live dashboard.
 
 ### 5. Interactive Dashboard (`05_html_dashboard.py`)
 
-Fully self-contained HTML report with all charts embedded as base64-encoded PNG images. Zero external dependencies, opens in any browser, works completely offline.
+A fully self-contained, tabbed HTML dashboard (`outputs/dashboard.html`) built with live Chart.js visualisations rather than static images:
+
+- **Tabbed navigation** across four sections — *Overview*, *Wellbeing Analysis*, *User Clusters*, and *Voices & Methods*
+- **Hero headline** that dynamically states whichever predictor currently has the strongest regression coefficient
+- **Animated KPI counters** for sample size, R², average wellbeing, and the sleep β coefficient
+- **Interactive Chart.js charts** — hoverable tooltips, donut/bar/line/scatter charts, and a custom-drawn correlation heatmap
+- **Automatic dark mode** matching the visitor's system preference
+- **Dynamic open-response quotes**, sampled directly from current survey text responses
+- **Embedded survey call-to-action button**, linking directly to the live Google Form so any visitor can contribute a new response
+- Zero external file dependencies aside from the Chart.js CDN script — works fully offline once loaded, no server required
+
+---
+
+## Live Dashboard
+
+The dashboard is not a static snapshot, it is regenerated from whatever data currently exists in the linked Google Sheet every time the pipeline is run. Each run stamps the dashboard footer and header with the exact response count and generation timestamp, so viewers always know how current the analysis is.
+
+| Tab | Contents |
+|---|---|
+| **Overview** | Demographics, full Likert score breakdown, regression coefficient bars, core statistical test table |
+| **Wellbeing Analysis** | Screentime vs. negative impact / wellbeing impact trend lines, PCA scatter by gender, full correlation heatmap |
+| **User Clusters** | Cluster profile cards, grouped bar comparison across 6 dimensions, PCA scatter coloured by cluster |
+| **Voices & Methods** | Live-sampled open-text quotes, methods summary, limitations, and theoretical framework grounding |
 
 ---
 
 ## Results
+
+*(Figures below reflect the n=56 snapshot described in this README; the live dashboard reflects the current dataset, which may differ.)*
 
 ### Descriptive Statistics
 
@@ -186,13 +216,13 @@ Fully self-contained HTML report with all charts embedded as base64-encoded PNG 
 ## Key Findings
 
 **1. Sleep, not screentime, drives wellbeing outcomes.**
-Raw daily screentime contributes almost nothing to wellbeing impact (β=−0.045) once behavioural mediators are controlled. Sleep disruption (β=0.449) and concentration difficulty (β=0.250) are the primary mechanisms through which social media harms student wellbeing. This aligns with "displacement theory" in media psychology, the problem is not time spent but vital functions displaced.
+Raw daily screentime contributes almost nothing to wellbeing impact (β=−0.045) once behavioural mediators are controlled. Sleep disruption (β=0.449) and concentration difficulty (β=0.250) are the primary mechanisms through which social media harms student wellbeing. This aligns with "displacement theory" in media psychology — the problem is not time spent but vital functions displaced.
 
 **2. One in four students is at high psychological risk.**
 The High-Risk cluster (25%) scores near the ceiling on nearly every harm dimension and is uniquely characterised by elevated social comparison, suggesting that upward social comparison on social media is a distinct risk factor, not merely a correlate of heavy use.
 
 **3. Statistical non-significance is itself a finding.**
-The absence of a significant gender difference (p=0.761) and the non-significant ANOVA (p=0.298) are meaningful at this sample size. They suggest that psychological harm from social media is broadly distributed across gender and usage levels in this population, a pattern that warrants investigation with a larger sample.
+The absence of a significant gender difference (p=0.761) and the non-significant ANOVA (p=0.298) are meaningful at this sample size. They suggest that psychological harm from social media is broadly distributed across gender and usage levels in this population — a pattern that warrants investigation with a larger sample, which is precisely why the survey remains open for new responses.
 
 **4. Concentration impairment is the most prevalent single symptom.**
 Q4 (difficulty concentrating after media use) has the highest mean of all 11 items (5.11/7), above even overall wellbeing impact (5.04/7). This has direct implications for academic performance and points to attention as the primary resource depleted by social media use.
@@ -202,15 +232,16 @@ Q4 (difficulty concentrating after media use) has the highest mean of all 11 ite
 ## Project Structure
 
 ```
-media-wellbeing-bangladesh/
+media-usage-wellbeing-project/
 │
 ├── data/
-│   ├── survey_raw.xlsx              # raw survey responses (not tracked in git)
-│   ├── survey_clean.csv             # output of script 01
-│   └── survey_with_clusters.csv    # output of script 03 (adds cluster + PCA cols)
+│   ├── survey_raw.xlsx               # local fallback copy (optional, not tracked in git)
+│   ├── survey_clean.csv              # output of script 01
+│   ├── survey_with_clusters.csv      # output of script 03 (adds cluster + PCA cols)
+│   └── backup_YYYYMMDD_HHMM.csv      # timestamped snapshot from each live fetch
 │
 ├── outputs/
-│   ├── index.html               # self-contained interactive report
+│   ├── dashboard.html                # self-contained interactive tabbed report
 │   ├── fig1_demographics.png
 │   ├── fig2_likert_means.png
 │   ├── fig3_screentime_impact.png
@@ -223,11 +254,12 @@ media-wellbeing-bangladesh/
 │   ├── cluster_profiles.csv
 │   └── pca_loadings.csv
 │
-├── 01_data_cleaning.py              # load, clean, derive composite scores
-├── 02_statistical_analysis.py       # correlation, t-test, ANOVA, regression
-├── 03_ml_clustering_pca.py          # k-means clustering + PCA
-├── 04_visualisations.py             # 8 publication-quality PNG charts
-├── 05_html_dashboard.py             # self-contained HTML report
+├── 01_data_cleaning.py               # fetch (or load), clean, derive composite scores
+├── 02_statistical_analysis.py        # correlation, t-test, ANOVA, regression
+├── 03_ml_clustering_pca.py           # k-means clustering + PCA
+├── 04_visualisations.py              # 8 publication-quality PNG charts
+├── 05_html_dashboard.py              # tabbed interactive HTML dashboard (Chart.js)
+├── run_all.py                        # runs all 5 scripts in sequence, one command
 │
 ├── requirements.txt
 ├── .gitignore
@@ -262,45 +294,41 @@ python -m pip install pandas openpyxl numpy scipy scikit-learn matplotlib
 git clone https://github.com/jarinyeasin/media-usage-wellbeing-project.git
 cd media-usage-wellbeing-project
 
-# 2. Place your survey Excel file in data/ and rename it
-#    data/survey_raw.xlsx
+# 2. Either:
+#    (a) Set GOOGLE_SHEET_URL in 01_data_cleaning.py to pull live responses, or
+#    (b) Place a local Excel file at data/survey_raw.xlsx and set USE_LOCAL = True
 
-# 3. Run the pipeline in order
-python 01_data_cleaning.py
-python 02_statistical_analysis.py
-python 03_ml_clustering_pca.py
-python 04_visualisations.py
-python 05_html_dashboard.py
+# 3. Run the entire pipeline in one command
+python run_all.py
 
 # 4. Open the dashboard
-#    outputs/index.html  — double-click to open in any browser
+#    outputs/dashboard.html  — double-click to open in any browser, works offline
 ```
+
+Each script can also be run individually and in order (`01` → `02` → `03` → `04` → `05`) if you want to inspect intermediate output at each stage.
 
 ---
 
-## Visualisations
+## Keeping the Dataset Live
 
-| Figure | Description |
-|---|---|
-| Fig 1 | Gender donut · Screentime distribution · Level of study |
-| Fig 2 | Mean Likert scores — all 11 dimensions, colour-coded by severity |
-| Fig 3 | Screentime group vs. Negative Impact (bar) & Wellbeing Impact (line) |
-| Fig 4 | Grouped bar — all Likert items broken down by gender |
-| Fig 5 | Pearson correlation matrix heatmap — all 11 variables |
-| Fig 6 | Elbow curve + Silhouette score — k selection diagnostics |
-| Fig 7 | Radar chart — three cluster profiles across 7 key dimensions |
-| Fig 8 | PCA scatter — respondents in 2D latent space, coloured by cluster |
+This project is designed to be re-run as new responses arrive rather than analysed once and archived:
+
+1. The Google Form is linked to a Google Sheet, published as a CSV endpoint
+2. `01_data_cleaning.py` fetches that endpoint on every run — no manual download needed
+3. Running `python run_all.py` regenerates every statistic, chart, and dashboard section from the current data
+4. The dashboard itself carries a **"Take the survey"** call-to-action button in its header, so visitors to the live site can contribute new responses directly
+5. Uploading the regenerated `outputs/dashboard.html` to GitHub Pages updates the public link within minutes
+
+This turns the repository into a living research instrument rather than a one-time report — the sample size, cluster boundaries, and even the dashboard's headline finding update automatically as the dataset grows.
 
 ---
 
 ## Limitations
 
-**Current limitations:**
-
-- **Sample size (n=56):** Reduces statistical power significantly. The ANOVA and Pearson correlation trends are visible and directionally consistent with the literature but fall below the p<0.05 threshold. A minimum of n=150–200 would substantially improve reliability.
-- **Convenience sampling:** Respondents were recruited through the author's networks, introducing selection bias toward science-stream urban students. The findings are not generalisable to rural or non-university populations.
+- **Sample size:** At n=56, statistical power is limited. The ANOVA and Pearson correlation trends are visible and directionally consistent with the literature but fall below the p<0.05 threshold. The live-collection design is intended to progressively address this; a minimum of n=150–200 would substantially improve reliability.
+- **Convenience sampling:** Respondents were recruited through the author's networks, introducing selection bias toward science-stream, urban students. The findings are not generalisable to rural or non-university populations.
 - **Self-reported screentime:** Device-reported screentime is more accurate. Self-reports are known to underestimate actual usage by approximately 20–30% in the literature.
-- **Cross-sectional design:** No causal inference is possible. The observed relationships between sleep disruption and wellbeing may reflect reverse causality, anxious students both use media more and sleep worse.
+- **Cross-sectional design:** No causal inference is possible. The observed relationships between sleep disruption and wellbeing may reflect reverse causality — anxious students both use media more and sleep worse.
 
 ---
 
@@ -328,6 +356,3 @@ Relevant literature: Twenge & Campbell (2019), Primack et al. (2017), Vannucci e
 - 🐙 [GitHub](https://github.com/jarinyeasin)
 
 ---
-
-*The survey instrument and derived dataset are shared for academic and non-commercial use only. This project is an experiment for a portfolio in data science and computational social science.
-Feedback, collaboration proposals, and methodological critiques are welcome via GitHub Issues or email.*
