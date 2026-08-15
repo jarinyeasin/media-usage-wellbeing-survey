@@ -138,7 +138,7 @@ Eight publication-quality PNG figures generated via matplotlib: demographics, Li
 
 ### 5. Interactive Dashboard (`05_html_dashboard.py`)
 
-A fully self-contained, tabbed HTML dashboard (`outputs/dashboard.html`) built with live Chart.js visualisations rather than static images:
+A fully self-contained, tabbed HTML dashboard (`outputs/index.html`) built with live Chart.js visualisations rather than static images:
 
 - **Tabbed navigation** across four sections — *Overview*, *Wellbeing Analysis*, *User Clusters*, and *Voices & Methods*
 - **Hero headline** that dynamically states whichever predictor currently has the strongest regression coefficient
@@ -301,6 +301,7 @@ Each script can be run individually and in order (`01` → `02` → `03` → `04
 
 # 4. Open the dashboard
 #    outputs/index.html  — double-click to open in any browser, works offline
+```
 
 ---
 
