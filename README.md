@@ -10,7 +10,7 @@
 [![Chart.js](https://img.shields.io/badge/Chart.js-4.x-FF6384?logo=chartdotjs&logoColor=white)](https://chartjs.org)
 
 > **🔗 [View Live Dashboard](https://jarinyeasin.github.io/media-usage-wellbeing-survey/)**
-> **📝 [Take the Survey](https://forms.gle/d42bvrNhkNxVAySn8)** — help grow this dataset
+> **📝 [Take the Survey](https://forms.gle/d42bvrNhkNxVAySn8)** Help grow this dataset!
 
 ---
 
@@ -35,7 +35,6 @@ The project is built as a **live, self-updating research pipeline**: new respons
 - [Key Findings](#key-findings)
 - [Project Structure](#project-structure)
 - [Reproducing This Study](#reproducing-this-study)
-- [Keeping the Dataset Live](#keeping-the-dataset-live)
 - [Limitations](#limitations)
 - [Academic Context](#academic-context)
 - [Author](#author)
@@ -241,7 +240,7 @@ media-usage-wellbeing-project/
 │   └── backup_YYYYMMDD_HHMM.csv      # timestamped snapshot from each live fetch
 │
 ├── outputs/
-│   ├── dashboard.html                # self-contained interactive tabbed report
+│   ├── index.html                # self-contained interactive tabbed report
 │   ├── fig1_demographics.png
 │   ├── fig2_likert_means.png
 │   ├── fig3_screentime_impact.png
@@ -297,34 +296,17 @@ cd media-usage-wellbeing-project
 #    (a) Set GOOGLE_SHEET_URL in 01_data_cleaning.py to pull live responses, or
 #    (b) Place a local Excel file at data/survey_raw.xlsx and set USE_LOCAL = True
 
-# 3. Run the entire pipeline in one command
-python run_all.py
+# 3. Run the entire pipeline
+Each script can be run individually and in order (`01` → `02` → `03` → `04` → `05`) if you want to inspect intermediate output at each stage.
 
 # 4. Open the dashboard
-#    outputs/dashboard.html  — double-click to open in any browser, works offline
-```
-
-Each script can also be run individually and in order (`01` → `02` → `03` → `04` → `05`) if you want to inspect intermediate output at each stage.
-
----
-
-## Keeping the Dataset Live
-
-This project is designed to be re-run as new responses arrive rather than analysed once and archived:
-
-1. The Google Form is linked to a Google Sheet, published as a CSV endpoint
-2. `01_data_cleaning.py` fetches that endpoint on every run — no manual download needed
-3. Running `python run_all.py` regenerates every statistic, chart, and dashboard section from the current data
-4. The dashboard itself carries a **"Take the survey"** call-to-action button in its header, so visitors to the live site can contribute new responses directly
-5. Uploading the regenerated `outputs/dashboard.html` to GitHub Pages updates the public link within minutes
-
-This turns the repository into a living research instrument rather than a one-time report — the sample size, cluster boundaries, and even the dashboard's headline finding update automatically as the dataset grows.
+#    outputs/index.html  — double-click to open in any browser, works offline
 
 ---
 
 ## Limitations
 
-- **Sample size:** At n=56, statistical power is limited. The ANOVA and Pearson correlation trends are visible and directionally consistent with the literature but fall below the p<0.05 threshold. The live-collection design is intended to progressively address this; a minimum of n=150–200 would substantially improve reliability.
+- **Sample size:** Starting with only n=56, statistical power is limited. The ANOVA and Pearson correlation trends are visible and directionally consistent with the literature but fall below the p<0.05 threshold. The live-collection design is intended to progressively address this; a minimum of n=150–200 would substantially improve reliability.
 - **Convenience sampling:** Respondents were recruited through the author's networks, introducing selection bias toward science-stream, urban students. The findings are not generalisable to rural or non-university populations.
 - **Self-reported screentime:** Device-reported screentime is more accurate. Self-reports are known to underestimate actual usage by approximately 20–30% in the literature.
 - **Cross-sectional design:** No causal inference is possible. The observed relationships between sleep disruption and wellbeing may reflect reverse causality — anxious students both use media more and sleep worse.
@@ -347,7 +329,7 @@ Relevant literature: Twenge & Campbell (2019), Primack et al. (2017), Vannucci e
 ## Author
 
 **Jarin Binta Yeasin**
-| Final-year undergraduate student, Department of Mass Communication and Journalism
+| Undergraduate student, Department of Mass Communication and Journalism
 | University of Dhaka
 
 - 📧 jarinyeasin@gmail.com
