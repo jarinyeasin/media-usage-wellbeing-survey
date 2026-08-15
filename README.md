@@ -9,7 +9,7 @@
 [![scipy](https://img.shields.io/badge/scipy-1.x-8CAAE6)](https://scipy.org)
 [![Chart.js](https://img.shields.io/badge/Chart.js-4.x-FF6384?logo=chartdotjs&logoColor=white)](https://chartjs.org)
 
-> **🔗 [View Live Dashboard](https://jarinyeasin.github.io/media-usage-wellbeing-project/)**
+> **🔗 [View Live Dashboard](https://jarinyeasin.github.io/media-usage-wellbeing-survey/)**
 > **📝 [Take the Survey](https://forms.gle/d42bvrNhkNxVAySn8)** — help grow this dataset
 
 ---
@@ -259,7 +259,6 @@ media-usage-wellbeing-project/
 ├── 03_ml_clustering_pca.py           # k-means clustering + PCA
 ├── 04_visualisations.py              # 8 publication-quality PNG charts
 ├── 05_html_dashboard.py              # tabbed interactive HTML dashboard (Chart.js)
-├── run_all.py                        # runs all 5 scripts in sequence, one command
 │
 ├── requirements.txt
 ├── .gitignore
