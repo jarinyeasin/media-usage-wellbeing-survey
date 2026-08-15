@@ -268,7 +268,7 @@ footer{{text-align:center;font-size:12px;color:var(--ink3);padding:2rem}}
 
 <div class="hero">
   <div class="hero-eyebrow">
-    University of Dhaka &nbsp;·&nbsp; Dept of Mass Communication &amp; Journalism
+    A survey analysis by Jarin Binta Yeasin &nbsp;·&nbsp; University of Dhaka
     &nbsp;·&nbsp; n={len(df)} &nbsp;·&nbsp; 2026
   </div>
   <div class="hero-headline">
@@ -606,7 +606,7 @@ footer{{text-align:center;font-size:12px;color:var(--ink3);padding:2rem}}
 
 <footer>
   Jarin Binta Yeasin &nbsp;&middot;&nbsp; University of Dhaka
-  &nbsp;&middot;&nbsp; Data SciAn Individual Research Project &nbsp;&middot;&nbsp; 2026
+  &nbsp;&middot;&nbsp; An Individual Research Project &nbsp;&middot;&nbsp; 2026
   &nbsp;&middot;&nbsp; Generated {GENERATED_AT} from n={len(df)} responses
 </footer>
 
