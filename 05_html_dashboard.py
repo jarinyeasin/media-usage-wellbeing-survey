@@ -188,7 +188,14 @@ body{{background:var(--surf0);color:var(--ink);
      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
      font-size:14px;line-height:1.5}}
 .hero{{padding:2.5rem 2rem 2rem;background:var(--surf1);
-       border-bottom:0.5px solid var(--bd)}}
+       border-bottom:0.5px solid var(--bd);
+       position:relative;overflow:hidden}}
+.hero::before{{content:"";position:absolute;inset:0;
+       background-image:url('hero_bg.png');
+       background-size:cover;background-position:center;
+       opacity:0.08;filter:grayscale(60%);
+       pointer-events:none;z-index:0}}
+.hero-eyebrow,.hero-headline,.hero-sub,.hero a{{position:relative;z-index:1}}
 .hero-eyebrow{{font-size:11px;font-weight:500;letter-spacing:.1em;
                text-transform:uppercase;color:var(--ink3);margin-bottom:.75rem}}
 .hero-headline{{font-size:clamp(22px,4vw,34px);font-weight:500;line-height:1.2;
