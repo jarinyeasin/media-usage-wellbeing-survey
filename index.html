@@ -32,15 +32,27 @@
 body{background:var(--surf0);color:var(--ink);
      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
      font-size:14px;line-height:1.5}
-.hero{{padding:2.5rem 2rem 2rem;background:var(--surf1);
+.hero{padding:2.5rem 2rem 2rem;background:var(--surf1);
        border-bottom:0.5px solid var(--bd);
-       position:relative;overflow:hidden}}
-.hero::before{{content:"";position:absolute;inset:0;
+       position:relative;overflow:hidden;
+       display:flex;align-items:center;justify-content:space-between;
+       gap:2.5rem;flex-wrap:wrap}
+.hero-text{flex:1 1 420px;min-width:280px}
+.hero-video{flex:0 1 400px;min-width:280px;
+       aspect-ratio:16/9;border-radius:12px;overflow:hidden;
+       border:0.5px solid var(--bd2);position:relative;z-index:1;
+       box-shadow:0 4px 20px rgba(0,0,0,.08)}
+.hero-video iframe{width:100%;height:100%;border:none;display:block}
+@media(max-width:820px){
+  .hero{flex-direction:column;align-items:flex-start}
+  .hero-video{width:100%;flex:1 1 auto}
+}
+.hero::before{content:"";position:absolute;inset:0;
        background-image:url('hero_bg.png');
        background-size:cover;background-position:center;
-       opacity:0.08;filter:grayscale(60%);
-       pointer-events:none;z-index:0}}
-.hero-eyebrow,.hero-headline,.hero-sub,.hero a{{position:relative;z-index:1}}
+       opacity:0.15;filter:grayscale(60%);
+       pointer-events:none;z-index:0}
+.hero-eyebrow,.hero-headline,.hero-sub,.hero a{position:relative;z-index:1}
 .hero-eyebrow{font-size:11px;font-weight:500;letter-spacing:.1em;
                text-transform:uppercase;color:var(--ink3);margin-bottom:.75rem}
 .hero-headline{font-size:clamp(22px,4vw,34px);font-weight:500;line-height:1.2;
@@ -119,26 +131,34 @@ footer{text-align:center;font-size:12px;color:var(--ink3);padding:2rem}
 <body>
 
 <div class="hero">
-  <div class="hero-eyebrow">
-    A survey analysis by Jarin Binta Yeasin &nbsp;·&nbsp; University of Dhaka
-    &nbsp;·&nbsp; n=60 &nbsp;·&nbsp; 2026
+  <div class="hero-text">
+    <div class="hero-eyebrow">
+      University of Dhaka &nbsp;·&nbsp; Dept. of Mass Communication & Journalism, University of Dhaka
+      &nbsp;·&nbsp; n=60 &nbsp;·&nbsp; 2026
+    </div>
+    <div class="hero-headline">
+      <span class="hero-accent">Sleep disruption</span>, not screen time,<br>
+      predicts student wellbeing.
+    </div>
+    <div class="hero-sub">
+      A behavioural segmentation of social media's psychological effects on
+      Bangladeshi university students from
+      primary survey data. Last updated: 2026-08-26 04:56.
+    </div>
+    <a href="https://forms.gle/EbZsVKhgwJ4FCiYb7" target="_blank" rel="noopener"
+       style="display:inline-flex;align-items:center;gap:6px;margin-top:1.25rem;
+              padding:.6rem 1.1rem;background:var(--teal);color:#fff;
+              font-size:13px;font-weight:500;border-radius:8px;
+              text-decoration:none;transition:opacity .15s">
+      Take the survey
+    </a>
   </div>
-  <div class="hero-headline">
-    <span class="hero-accent">Sleep disruption</span>, not screen time,<br>
-    predicts student wellbeing.
+  <div class="hero-video">
+    <iframe src="https://www.youtube.com/embed/XSSyB_DNoSk"
+      title="Project explanation video"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowfullscreen loading="lazy"></iframe>
   </div>
-  <div class="hero-sub">
-    A behavioural segmentation of social media's psychological effects on
-    Bangladeshi university students from
-    primary survey data. Last updated: 2026-08-02 02:14.
-  </div>
-  <a href="https://forms.gle/EbZsVKhgwJ4FCiYb7" target="_blank" rel="noopener"
-     style="display:inline-flex;align-items:center;gap:6px;margin-top:1.25rem;
-            padding:.6rem 1.1rem;background:var(--teal);color:#fff;
-            font-size:13px;font-weight:500;border-radius:8px;
-            text-decoration:none;transition:opacity .15s">
-    Take the survey
-  </a>
 </div>
 
 <div class="stat-strip">
@@ -479,7 +499,7 @@ footer{text-align:center;font-size:12px;color:var(--ink3);padding:2rem}
 <footer>
   Jarin Binta Yeasin &nbsp;&middot;&nbsp; University of Dhaka
   &nbsp;&middot;&nbsp; An Individual Research Project &nbsp;&middot;&nbsp; 2026
-  &nbsp;&middot;&nbsp; Generated 2026-08-02 02:14 from n=60 responses
+  &nbsp;&middot;&nbsp; Generated 2026-08-26 04:56 from n=60 responses
 </footer>
 
 <!-- ══ CHART.JS (loaded from CDN) ═══════════════════════════════════ -->
