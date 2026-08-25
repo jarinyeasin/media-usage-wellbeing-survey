@@ -11,6 +11,7 @@
 
 > **🔗 [View Live Dashboard](https://jarinyeasin.github.io/media-usage-wellbeing-survey/)**
 > **📝 [Take the Survey](https://forms.gle/d42bvrNhkNxVAySn8)** Help grow this dataset!
+> **📝 [Watch Explanation on YouTube](https://youtu.be/XSSyB_DNoSk)**
 
 ---
 
