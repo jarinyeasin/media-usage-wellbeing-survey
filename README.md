@@ -10,8 +10,8 @@
 [![Chart.js](https://img.shields.io/badge/Chart.js-4.x-FF6384?logo=chartdotjs&logoColor=white)](https://chartjs.org)
 
 > **🔗 [View Live Dashboard](https://jarinyeasin.github.io/media-usage-wellbeing-survey/)**
-> **📝 [Take the Survey](https://forms.gle/d42bvrNhkNxVAySn8)** Help grow this dataset!
-> **📝 [Watch Explanation on YouTube](https://youtu.be/XSSyB_DNoSk)**
+> **📝 [Take the Survey](https://forms.gle/d42bvrNhkNxVAySn8)**
+> **📺 [Watch Explanation on YouTube](https://youtu.be/XSSyB_DNoSk)**
 
 ---
 
