@@ -287,10 +287,6 @@ footer{{text-align:center;font-size:12px;color:var(--ink3);padding:2rem}}
 
 <div class="hero">
   <div class="hero-text">
-    <div class="hero-eyebrow">
-      University of Dhaka &nbsp;·&nbsp; Dept. of Mass Communication & Journalism, University of Dhaka
-      &nbsp;·&nbsp; n={len(df)} &nbsp;·&nbsp; 2026
-    </div>
     <div class="hero-headline">
       <span class="hero-accent">{top_predictor}</span>, not screen time,<br>
       predicts student wellbeing.
